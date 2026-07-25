@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends
 from .models import IngestRequest, ReviewRequest, AnalysisResponse
 from .webhooks import webhook_router
+from .auth import verify_token
 from backend.app.part1_parser.ingestion import RepoIngestor
-from backend.app.part1_parser.static_scanner import StaticSecurityScanner
-from backend.app.part2_knowledge.graph_builder import KnowledgeGraphBuilder
 from backend.app.part3_agents.orchestrator import LangGraphOrchestrator
 
 api_router = APIRouter()
@@ -23,17 +22,21 @@ def health_check():
     }
 
 @api_router.post("/ingest", response_model=AnalysisResponse)
-def ingest_repository(req: IngestRequest):
-    ingestor = RepoIngestor(req.repo_url)
-    result = ingestor.clone_or_load()
+def ingest_repository(req: IngestRequest, token_payload: dict = Depends(verify_token)):
+    ingestor = RepoIngestor()
+    if req.repo_url.startswith(("http://", "https://")):
+        ingestor.from_github(req.repo_url, branch=req.branch or "main")
+    else:
+        ingestor.from_local(req.repo_url)
+    result = ingestor.manifest()
     return AnalysisResponse(
         status="success",
-        summary=f"Ingested repository successfully with {result['file_count']} files.",
+        summary=f"Ingested repository successfully with {result['total_files']} files.",
         findings=result
     )
 
 @api_router.post("/review", response_model=AnalysisResponse)
-def review_code(req: ReviewRequest):
+def review_code(req: ReviewRequest, token_payload: dict = Depends(verify_token)):
     orchestrator = LangGraphOrchestrator()
     review_res = orchestrator.run_pr_review_workflow(req.code_diff or "", {})
     return AnalysisResponse(
