@@ -111,6 +111,7 @@ celerybeat.pid
 .env.development.local
 .env.test.local
 .env.production.local
+.env.example
 
 # Node.js
 node_modules/

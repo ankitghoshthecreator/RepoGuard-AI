@@ -1,13 +1,151 @@
-from typing import Dict, Any, List
+"""
+Part 3 – Testing Agent
+=======================
+Parses a code diff to extract function/method definitions and generates
+pytest-compatible unit test stubs for each discovered callable.
+"""
+
+import re
+import logging
+from typing import Any, Dict, List, Tuple
+
+logger = logging.getLogger("repoguard.part3.testing_agent")
+
+
+# Patterns to detect function/method definitions in a diff
+_FUNC_PATTERNS = [
+    # Python: def foo(...) or async def foo(...)
+    re.compile(r"^\+?\s*(async\s+)?def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)"),
+    # JavaScript / TypeScript: function foo(...)
+    re.compile(r"^\+?\s*(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\("),
+    # Arrow function: const foo = (...) =>
+    re.compile(r"^\+?\s*(?:const|let|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(?:async\s+)?\("),
+]
+
+# Lines to skip when scanning
+_SKIP_PREFIXES = ("---", "+++", "@@", "#", "//")
+
 
 class TestingAgent:
-    """Part 3: Unit test and test coverage generator agent."""
+    """
+    Part 3: Unit test and test coverage generator agent.
+
+    Parses a PR diff to find new/modified function definitions and
+    auto-generates pytest test stubs with sensible assertion templates.
+    """
 
     def generate_tests(self, function_name: str, code_snippet: str) -> str:
-        return f"""
-import pytest
+        """
+        Generate a pytest stub for a single named function.
 
-def test_{function_name}_auto_generated():
-    # Auto-generated unit test template by RepoGuard AI TestingAgent
-    assert True
-"""
+        Parameters
+        ----------
+        function_name:
+            Name of the function to test.
+        code_snippet:
+            The function body (used for basic param detection).
+
+        Returns
+        -------
+        A string containing a ready-to-run (though skeletal) pytest module.
+        """
+        return self._render_stub(function_name, params=[])
+
+    def analyze_diff(self, code_diff: str) -> Dict[str, Any]:
+        """
+        Parse a code diff and generate test stubs for all new/changed functions.
+
+        Parameters
+        ----------
+        code_diff:
+            Raw unified diff string.
+
+        Returns
+        -------
+        dict with keys:
+            agent, functions_found (list of names),
+            generated_tests (str — full pytest module),
+            stub_count.
+        """
+        functions = self._extract_functions(code_diff)
+        test_module = self._render_module(functions)
+
+        logger.info("TestingAgent: %d function(s) found in diff", len(functions))
+
+        return {
+            "agent": "TestingAgent",
+            "functions_found": [fn for fn, _ in functions],
+            "generated_tests": test_module,
+            "stub_count": len(functions),
+        }
+
+    # ── Internals ───────────────────────────────────────────────────────
+
+    def _extract_functions(self, diff: str) -> List[Tuple[str, List[str]]]:
+        """Return list of (function_name, [param_names]) from added lines in the diff."""
+        found: List[Tuple[str, List[str]]] = []
+        seen: set = set()
+
+        for line in diff.splitlines():
+            stripped = line.strip()
+            if not stripped or any(stripped.startswith(p) for p in _SKIP_PREFIXES):
+                continue
+            for pat_index, pattern in enumerate(_FUNC_PATTERNS):
+                m = pattern.match(line)
+                if m:
+                    if pat_index == 0:
+                        # Python pattern: group(2) = name, group(3) = params
+                        func_name = m.group(2)
+                        params = self._parse_params_from_string(m.group(3) or "")
+                    else:
+                        # JS/TS patterns: group(1) = name (no params group)
+                        func_name = m.group(1)
+                        params = []
+
+                    if func_name and func_name not in seen and not func_name.startswith("__"):
+                        found.append((func_name, params))
+                        seen.add(func_name)
+                    break
+
+        return found
+
+    @staticmethod
+    def _parse_params_from_string(raw: str) -> List[str]:
+        """Extract clean param names from a raw parameter string like 'data: str, key=None'."""
+        if not raw.strip():
+            return []
+        params = []
+        for p in raw.split(","):
+            name = p.split(":")[0].split("=")[0].strip()
+            if name and name != "self" and re.match(r"^[a-zA-Z_]", name):
+                params.append(name)
+        return params
+
+
+    def _render_module(self, functions: List[Tuple[str, List[str]]]) -> str:
+        """Render a full pytest module with stubs for all functions."""
+        if not functions:
+            return (
+                "# No new function definitions detected in the diff.\n"
+                "# Add tests manually for any logic changes.\n"
+            )
+        stubs = "\n\n".join(self._render_stub(name, params) for name, params in functions)
+        return (
+            "# Auto-generated by RepoGuard AI – TestingAgent\n"
+            "# Review and complete assertions before committing.\n\n"
+            "import pytest\n\n\n"
+            + stubs
+        )
+
+    @staticmethod
+    def _render_stub(name: str, params: List[str]) -> str:
+        """Render a single pytest test stub."""
+        param_defaults = ", ".join(f"{p}=None" for p in params) if params else ""
+        call_args = ", ".join(params) if params else ""
+        return (
+            f"def test_{name}():\n"
+            f'    """Test stub for {name}() – complete with real assertions."""\n'
+            + (f"    # Sample call: {name}({call_args})\n" if call_args else "")
+            + "    # TODO: arrange inputs, call function, assert outputs\n"
+            "    assert True  # replace with real assertion\n"
+        )
