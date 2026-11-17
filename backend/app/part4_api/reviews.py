@@ -1,6 +1,7 @@
 """Persistent asynchronous review jobs, detail, and SSE event stream."""
 import json
 import logging
+import re
 import threading
 import uuid
 from types import SimpleNamespace
@@ -28,15 +29,27 @@ class CreateReview(BaseModel):
 
     @model_validator(mode="after")
     def validate_source(self):
-        if not (self.diff_text or self.repo_url or self.pr_url):
+        if not (self.diff_text and self.diff_text.strip()) and not (self.repo_url or self.pr_url):
             raise ValueError("Provide repo_url, pr_url, or diff_text")
         if self.diff_text and len(self.diff_text) > settings.MAX_DIFF_SIZE:
             raise ValueError(f"diff_text exceeds {settings.MAX_DIFF_SIZE} characters")
         for value in (self.repo_url, self.pr_url):
             if value:
                 parsed = urlparse(value)
-                if parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}:
+                if (parsed.scheme != "https" or parsed.hostname not in {"github.com", "www.github.com"}
+                        or parsed.username or parsed.password or parsed.port not in (None, 443)
+                        or parsed.fragment):
                     raise ValueError("Only public GitHub HTTPS URLs are supported")
+                segments = parsed.path.strip("/").split("/")
+                if value == self.pr_url:
+                    valid_tail = len(segments) == 4 or (
+                        len(segments) == 5 and segments[4] in {"files", "commits", "checks", "conversation"}
+                    )
+                    if (len(segments) < 4 or segments[2] != "pull" or not segments[3].isdigit()
+                            or not valid_tail):
+                        raise ValueError("pr_url must identify a GitHub pull request")
+                elif len(segments) != 2 or not all(segments):
+                    raise ValueError("repo_url must identify a GitHub repository")
         return self
 
 
