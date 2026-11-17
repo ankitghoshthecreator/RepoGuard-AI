@@ -13,7 +13,7 @@ LangGraph server.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Callable, Optional
 
 from backend.app.part3_agents.security_agent     import SecurityAgent
 from backend.app.part3_agents.architecture_agent import ArchitectureAgent
@@ -55,6 +55,7 @@ class LangGraphOrchestrator:
         self,
         pr_diff: str,
         repo_context: Dict[str, Any],
+        progress_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Execute the full multi-agent PR review pipeline.
@@ -77,30 +78,40 @@ class LangGraphOrchestrator:
         logger.info("Orchestrator: starting PR review pipeline (diff length=%d)", len(pr_diff))
 
         # ── Stage 1: Security ──────────────────────────────────────────
+        if progress_callback: progress_callback("node_started", {"node": "security"})
         sec_result = self._security.analyze(pr_diff)
+        if progress_callback: progress_callback("node_completed", {"node": "security"})
         logger.info("Stage 1/4 Security done — status=%s", sec_result.get("status"))
 
         # ── Stage 2: Architecture ──────────────────────────────────────
         # If the security scan surfaced a CRITICAL risk, still continue
         # but flag it in the context for the reviewer.
+        if progress_callback: progress_callback("node_started", {"node": "architecture"})
         arch_result = self._architecture.analyze(repo_context or {})
+        if progress_callback: progress_callback("node_completed", {"node": "architecture"})
         logger.info("Stage 2/4 Architecture done — verdict=%s", arch_result.get("verdict"))
 
         # ── Stage 3: Performance ───────────────────────────────────────
+        if progress_callback: progress_callback("node_started", {"node": "performance"})
         perf_result = self._performance.analyze(pr_diff)
+        if progress_callback: progress_callback("node_completed", {"node": "performance"})
         logger.info("Stage 3/4 Performance done — complexity=%s", perf_result.get("time_complexity"))
 
         # ── Stage 4: Testing ───────────────────────────────────────────
+        if progress_callback: progress_callback("node_started", {"node": "testing"})
         test_result = self._testing.analyze_diff(pr_diff)
+        if progress_callback: progress_callback("node_completed", {"node": "testing"})
         logger.info("Stage 4/4 Testing done — %d stub(s) generated", test_result.get("stub_count", 0))
 
         # ── Stage 5: Reviewer aggregation ─────────────────────────────
+        if progress_callback: progress_callback("node_started", {"node": "synthesis"})
         final_report = self._reviewer.synthesize_report([
             sec_result,
             arch_result,
             perf_result,
             test_result,
         ])
+        if progress_callback: progress_callback("node_completed", {"node": "synthesis"})
 
         logger.info(
             "Orchestrator: pipeline complete — overall_status=%s risk=%s",

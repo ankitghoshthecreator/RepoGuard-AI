@@ -12,10 +12,12 @@ services:
       - QDRANT_HOST=qdrant
       - NEO4J_URI=bolt://neo4j:7687
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+psycopg2://repoguard:repoguard_pass@postgres:5432/repoguard_db
     depends_on:
       - qdrant
       - neo4j
       - redis
+      - postgres
     volumes:
       - ../backend:/app/backend
 
@@ -45,6 +47,18 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: repoguard
+      POSTGRES_PASSWORD: repoguard_pass
+      POSTGRES_DB: repoguard_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   qdrant_data:
   neo4j_data:
+  postgres_data:

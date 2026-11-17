@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from .models import IngestRequest, ReviewRequest, AnalysisResponse
 from .webhooks import webhook_router
 from .auth import verify_token
 from backend.app.part1_parser.ingestion import RepoIngestor
 from backend.app.part3_agents.orchestrator import LangGraphOrchestrator
+from .reviews import reviews_router
 
 api_router = APIRouter()
+api_router.include_router(reviews_router, tags=["reviews"])
 api_router.include_router(webhook_router, prefix="/webhooks", tags=["webhooks"])
 
 @api_router.get("/health")

@@ -174,6 +174,31 @@ RepoGuard-AI/
 
 ## Quick Start Guide
 
+## Review jobs API
+
+The original `/api/v1/review` endpoint remains available. Persistent asynchronous jobs are exposed at:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/reviews/` | Submit `{"diff_text":"..."}` or a public GitHub PR URL; returns a queued job ID |
+| `GET` | `/api/v1/reviews/` | Paginated saved reviews; supports `status`, `repo`, `page`, `page_size` |
+| `GET` | `/api/v1/reviews/{id}/` | Review result, findings, and progress events |
+| `GET` | `/api/v1/reviews/{id}/stream/` | Server-sent progress events |
+| `POST` | `/api/v1/reviews/{id}/rerun/` | Start the review again using retained input |
+| `GET` | `/api/v1/health` | Service health |
+
+Review data uses SQLite at `repoguard.db` by default. Compose starts PostgreSQL for container deployments. The API accepts only GitHub HTTPS URLs for PR retrieval and caps diffs at `MAX_DIFF_SIZE`. Configure `GITHUB_TOKEN` for private repository PRs. Copy `.env.example` to `.env`; replace every `change_me` or placeholder before deployment.
+
+### MCP server
+
+Install the requirements and run `python -m backend.app.mcp_server` using an MCP-compatible client with stdio transport. The server exposes `review_diff`, `get_review`, and `list_findings`.
+
+### Current implementation scope
+
+The current agents are deterministic analysis components and do not call an LLM. Provider selection, structured LLM outputs, token/cost accounting, LangSmith/OpenTelemetry tracing, distributed job queues, per-user API tokens/throttling, Next.js migration, and frontend automated tests remain future work. The browser dashboard currently uses the existing React/Vite app and can submit diffs or public PR URLs.
+
+The review pipeline stages and their inputs/outputs are documented in [`docs/AGENTS.md`](docs/AGENTS.md).
+
 ### 1. Prerequisites
 - Python 3.11+
 - Node.js 18+ (for frontend development)

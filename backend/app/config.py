@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "repoguard")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "repoguard_pass")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "repoguard_db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    MAX_DIFF_SIZE: int = 500_000
+    REVIEW_TOKEN_BUDGET: int = 20_000
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
+    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 
     # ── GitHub integration ────────────────────────────────────────────
     GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
@@ -51,3 +58,13 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def database_url() -> str:
+    if settings.DATABASE_URL:
+        return settings.DATABASE_URL
+    if os.getenv("POSTGRES_HOST"):
+        return (f"postgresql+psycopg2://{settings.POSTGRES_USER}:"
+                f"{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:"
+                f"{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
+    return "sqlite:///./repoguard.db"
